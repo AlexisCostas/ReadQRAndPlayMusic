@@ -5,88 +5,66 @@ import math
 import fluidsynth
 import threading
 import time
-import mpd
 import alsaaudio
 import webbrowser
+from pytube import YouTube
+from moviepy.editor import *
+from pydub import AudioSegment
+from pydub.playback import play
+import os
+import vlc 
 
-class Code:
-    def __init__(self, data, bbox, angle_event_size=3):
-        self.data = data
-        self.bbox = bbox
-        self.not_seen_cnt = 0
-        self.angle_offset = 0
+def sanitize_filename(title):
+    valid_chars = '-_()[]{}.,;'
 
-        self.initial_angle = self.angle()
-        self.last_angle = self.initial_angle
-        self.last_angle_event_angle = self.initial_angle
-        self.ANGLE_EVENT_SIZE = angle_event_size
+    title_without_spaces = ''.join(c if c.isalnum() or c in valid_chars else '_' for c in title)
 
-    def angle(self):
-        vec = [self.bbox[0][0] - self.bbox[1][0], self.bbox[0][1] - self.bbox[1][1]]
-        ang = math.atan2(vec[0], vec[1]) * 180 / math.pi - 90 + self.angle_offset
-        return ang
+    return title_without_spaces
 
-    def angle_event(self):
-        pass
+def download_and_play_youtube_audio(url):
+    # Download YouTube video
+    yt = YouTube(url)
+    ys = yt.streams.filter(only_audio=True).first()
+    # Create a sanitized filename
+    filename = sanitize_filename(yt.title + ".webm")
+    
+    print("Downloading audio...")
+    ys.download(filename)
+    realfilename= filename+"/"+yt.title+".mp4"
 
-    def update(self, bbox):
-        self.bbox = bbox
-        if abs(self.angle() - self.last_angle) >= 45:
-            if self.angle() - self.last_angle > 0:
-                self.angle_offset -= 90
-            else:
-                self.angle_offset += 90
+    # creating vlc media player object 
+    media = vlc.MediaPlayer(realfilename) 
+    
+    # start playing video 
+    media.play() 
+    
+    print("el codigo sigue ejecutandose")
+    # try:
+    #     # Print file information
+    #     os.startfile(realfilename)
+    #     print("File Info:")
+    os.system(f"ffprobe -v error -show_format -show_streams {realfilename}")
+    #     # # Convert video to audio using moviepy
+    #     # audio_clip = AudioFileClip(realfilename, 0)
+    #     # audio_clip.preview()
+    #     print("Playing audio...")
 
-        self.last_angle = self.angle()
+    # except Exception as e:
+    #     print(f"Error processing the video: {e}")
 
-        if abs(self.last_angle_event_angle - self.angle()) >= self.ANGLE_EVENT_SIZE:
-            self.angle_event()
-            self.last_angle_event_angle = self.angle()
+    
 
-class SeekCode(Code):
-    def __init__(self, data, bbox):
-        super().__init__(data, bbox)
-        ack_sound()
-
-    def angle_event(self):
-        if self.last_angle_event_angle - self.angle() > 0:
-            print('Seeking +10s')
-            client.seekcur('+10')
-        else:
-            print('Seeking -10s')
-            client.seekcur('-10')
-
-class InstrumentCode(Code):
-    def __init__(self, data, bbox):
-        super().__init__(data, bbox)
-        print(data)
-
-        self.note = 60
-
-    def angle_event(self):
-        global fs
-        if self.last_angle_event_angle - self.angle() > 0:
-            self.note += 1
-        else:
-            self.note -= 1
-
-        fs.noteon(0, self.note, 127)
-
-class CallBrowser(Code):
-    def __init__(self, data, bbox):
-        super().__init__(data, bbox)
-        webbrowser.open(Code)
-        
 codes = dict()
-
-cv2.namedWindow("QR Code Reader", cv2.WINDOW_NORMAL)
-
+WINDOW_WIDTH = 640
+WINDOW_HEIGHT = 480
 cap = cv2.VideoCapture(0)
 
 while True:
     ret, frame = cap.read()
     if not ret:
         break
+
+    frame = cv2.resize(frame, (WINDOW_WIDTH, WINDOW_HEIGHT))
 
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     d = decode(gray)
@@ -101,7 +79,8 @@ while True:
 
         if d not in codes:
             if d.startswith('https://www.youtube.com') or d.startswith('https://youtu.be'):
-                codes[d] = CallBrowser(d, bbox[i])            
+                print('El codigo es: ' + d)
+                download_and_play_youtube_audio(d)
             else:
                 print('Unknown type of QR code')
                 print(d)
